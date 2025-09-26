@@ -1,0 +1,94 @@
+const int fsrPin = A0;        
+const int ledStripPin = 6;    
+const int leds[4] = {2, 3, 4, 5};  // Main LED group
+const int auxLeds[2] = {7, 8};     // Additional auxiliary LEDs
+
+const int minRaw = 750;   // Raw value at maximum pressure
+const int maxRaw = 1000;   // Raw value when no pressure is applied
+
+const unsigned long holdTime = 2000; // 2-second delay before turning off
+
+bool isPressed = false;         
+int savedLevel = 0;             
+int maxLevelDuringPress = 0;    
+unsigned long releaseTime = 0;  
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(ledStripPin, OUTPUT);
+
+  for (int i = 0; i < 4; i++) pinMode(leds[i], OUTPUT);
+  for (int i = 0; i < 2; i++) pinMode(auxLeds[i], OUTPUT);
+}
+
+void loop() {
+  int raw = analogRead(fsrPin);
+
+  // Output raw value for debugging 
+  Serial.println(raw);
+
+  // LED strip brightness (instant response)
+  int brightness = map(raw, maxRaw, minRaw, 0, 255);
+  brightness = constrain(brightness, 0, 255);
+  analogWrite(ledStripPin, brightness);
+
+  //  Map raw value to percentage (0–100%) 
+  int percent = map(raw, maxRaw, minRaw, 0, 100);
+  percent = constrain(percent, 0, 100);
+
+  // Light up LEDs when pressure is applied 
+  if (percent > 0) {
+    isPressed = true;
+    maxLevelDuringPress = 0;
+
+    if (percent >= 0)  maxLevelDuringPress = 1;   // D2
+    if (percent >= 25) maxLevelDuringPress = 2;   // D3
+    if (percent >= 50) maxLevelDuringPress = 3;   // D4
+    if (percent >= 75) maxLevelDuringPress = 4;   // D5
+
+    // Turn on corresponding LEDs
+    for (int i = 0; i < 4; i++) {
+      if (i < maxLevelDuringPress) digitalWrite(leds[i], HIGH);
+      else digitalWrite(leds[i], LOW);
+    }
+  } 
+  else { // No pressure
+    if (isPressed) {
+      savedLevel = maxLevelDuringPress;
+      releaseTime = millis();
+      isPressed = false;
+    }
+
+    unsigned long elapsed = millis() - releaseTime;
+    if (elapsed < holdTime && savedLevel > 0) {
+      unsigned long step = holdTime / savedLevel;
+      int lightsOn = savedLevel - (elapsed / step);
+
+      for (int i = 0; i < 4; i++) {
+        if (i < lightsOn) digitalWrite(leds[i], HIGH);
+        else digitalWrite(leds[i], LOW);
+      }
+    } else {
+      for (int i = 0; i < 4; i++) digitalWrite(leds[i], LOW);
+    }
+  }
+
+  // Auxiliary LED control 
+  bool anyMainOn = false;
+  for (int i = 0; i < 4; i++) {
+    if (digitalRead(leds[i]) == HIGH) {
+      anyMainOn = true;
+      break;
+    }
+  }
+
+  if (anyMainOn) {
+    digitalWrite(auxLeds[0], LOW);
+    digitalWrite(auxLeds[1], LOW);
+  } else {
+    digitalWrite(auxLeds[0], HIGH);
+    digitalWrite(auxLeds[1], HIGH);
+  }
+
+  delay(20);
+}
